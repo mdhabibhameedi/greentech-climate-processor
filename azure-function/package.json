@@ -1,0 +1,8 @@
+{
+  "name": "greentech-azure-function",
+  "version": "1.0.0",
+  "description": "GreenTech Analytics climate processor (Azure Functions, Node.js)",
+  "dependencies": {
+    "@azure/storage-blob": "^12.17.0"
+  }
+}
