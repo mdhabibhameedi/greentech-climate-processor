@@ -1,98 +1,102 @@
-# GreenTech Analytics Climate Processor
+# EcoBuy — Auto-Scaling Compute on AWS
 
-Modular Assignment 1, Introduction to Cloud Computing (IHC - Cloud Development).
-Author: Md Habib Ahmed
+**Modular Assignment 2 | IHC – Cloud Development**  
+**Author:** Md Habib Ahmed  
+**Region:** AWS Europe (Stockholm), `eu-north-1`  
+**Status:** Completed demonstration; all AWS resources were deleted after testing to avoid ongoing charges. **There is no live endpoint.**
 
-A small serverless web service that combines **live weather data** (OpenWeatherMap API) with **historical temperature data** (Kaggle Earth Surface Temperature CSV) and returns the result as JSON. The same service is deployed on **AWS Lambda** and **Azure Functions** so the two providers can be compared on deployment, scalability, performance and cost.
+EcoBuy is a small Flask-based catalogue application deployed on Amazon EC2 behind an Application Load Balancer (ALB). An EC2 Auto Scaling Group (ASG) maintained a minimum of two instances across two Availability Zones and scaled up to five instances under CPU-intensive load. The infrastructure was configured in the AWS Console; this repository provides the application, bootstrap script, recorded settings, synthetic datasets, load-test script, screenshots, and assignment report. **It does not contain Terraform or currently deployed infrastructure.**
 
-![Architecture](docs/architecture-diagram.png)
+![EcoBuy AWS architecture](docs/modular2-architecture.png)
 
-## What it returns
+## Project contents
 
-`GET ...?city=Abha` returns JSON with the live temperature and humidity, the number of historical records used, the historical average, and the difference between the two.
-
-```json
-{
-  "service": "GreenTech Analytics Climate Processor",
-  "cloud_provider": "AWS Lambda",
-  "live": { "city": "Abha", "temperature_c": 23.14, "humidity_pct": 14 },
-  "historical": { "records_used": 1825, "first_date": "1861-01-01", "latest_date": "01-08-2013", "avg_temperature_c": 24.48 },
-  "temperature_deviation_c": -1.34
-}
-```
-
-## Repository layout
-
-| Folder | Contents |
+| Location | Purpose |
 |---|---|
-| `aws-lambda/` | Python Lambda function |
-| `azure-function/` | Node.js Azure Function (`climateFunction`) |
-| `load-test/` | Node.js script used for the load test |
-| `docs/` | Architecture diagram and formatted Modular Assignment 1 report |
-| `screenshots/` | Evidence screenshots (AWS and Azure) |
+| [`app/app.py`](app/app.py) | Flask catalogue, health check, JSON API, and CPU-work endpoint |
+| [`app/user-data.sh`](app/user-data.sh) | EC2 launch-template bootstrap and systemd service setup |
+| [`config/aws-console-settings.md`](config/aws-console-settings.md) | Recorded AWS resource settings and scaling policy |
+| [`datasets/traffic.csv`](datasets/traffic.csv) | Synthetic seven-day hourly traffic scenario |
+| [`datasets/metrics.json`](datasets/metrics.json) | Synthetic hourly CPU and memory observations |
+| [`datasets/generate_datasets.py`](datasets/generate_datasets.py) | Reproducible synthetic-data generator |
+| [`load-test/loadtest2.js`](load-test/loadtest2.js) | Live HTTP load generator for the deployed ALB |
+| [`docs/modular2-architecture.png`](docs/modular2-architecture.png) | System architecture diagram |
+| [`screenshots/`](screenshots/) | 28 screenshots of configuration, deployment, tests, scaling, and costs |
+| [`docs/Compute Solution-M2-Report.docx`](docs/Compute%20Solution-M2-Report.docx) | Final formatted four-page assignment report |
 
-## Assignment report
 
-[Download the formatted Modular Assignment 1 report](docs/Introduction%20To%20CC-M1-Report.docx)
+## Architecture and AWS configuration
 
-## APIs and data used
+- **Compute:** Amazon Linux 2023 EC2 `t3.micro` instances running Flask through Gunicorn, provisioned by a launch template.
+- **Traffic distribution:** Internet-facing Application Load Balancer, HTTP listener on port 80, target-group health checks at `/health`.
+- **Availability:** Two Availability Zones (`eu-north-1a`, `eu-north-1b`).
+- **Auto scaling:** Desired/minimum **2** instances, maximum **5**; CPU target-tracking policy at **70%**, with **300-second** warm-up and scale-in enabled.
+- **Observability:** EC2/ASG metrics and CPU-based CloudWatch alarms. Application logs were not centrally shipped to CloudWatch.
 
-- **OpenWeatherMap Current Weather API** (`https://api.openweathermap.org/data/2.5/weather`), needs a free API key.
-- **Kaggle "Climate Change: Earth Surface Temperature Data"** (by-city file). I filtered it to the city Abha (about 101 KB), saved it as `climate.csv`, and uploaded it to S3 and Azure Blob Storage. The file is not included here, so download the dataset from Kaggle yourself.
-- Columns used: `dt`, `AverageTemperature`, `City`. This dataset has no CO2 column, so CO2 is not part of this prototype.
+See [`config/aws-console-settings.md`](config/aws-console-settings.md) for the settings recorded during the deployment. The diagram illustrates the intended design; actual observed behavior is distinguished below.
 
-## Setup: AWS Lambda (region eu-north-1)
+## Application endpoints
 
-1. Create an S3 bucket and upload `climate.csv`.
-2. Create a Lambda function (Python 3, 128 MB) and paste in `aws-lambda/lambda_function.py`.
-3. Set the timeout to 15 seconds.
-4. Attach `AmazonS3ReadOnlyAccess` to the function's role.
-5. Add these environment variables:
-
-| Name | Value |
+| Route | Behavior |
 |---|---|
-| `OPENWEATHER_API_KEY` | your OpenWeatherMap key |
-| `BUCKET_NAME` | your bucket name |
-| `CSV_KEY` | `climate.csv` |
+| `/` | Product catalogue and responding instance ID |
+| `/health` | Returns `ok` for ALB target health checks |
+| `/api/products` | JSON product list and responding instance ID |
+| `/work` | Approximately 200 ms of CPU work per request, used to create test load |
 
-6. Create a Function URL (auth type NONE) and add resource-based policies allowing `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` (via the Function URL).
-7. Open `<function-url>/?city=Abha`.
+## Recreate the demonstration (optional; AWS charges may apply)
 
-## Setup: Azure Functions (region Central India)
+1. Review the settings in [`config/aws-console-settings.md`](config/aws-console-settings.md), and create the launch template and security group in `eu-north-1`. Use [`app/user-data.sh`](app/user-data.sh) as EC2 user data.
+2. Create an HTTP target group with `/health` checks, an internet-facing ALB across two Availability Zones, and an ASG attached to that target group.
+3. Set ASG desired/minimum capacity to 2 and maximum to 5; configure CPU target tracking at 70% with a 300-second warm-up.
+4. After targets become healthy, visit `http://<YOUR-ALB-DNS>/` and `http://<YOUR-ALB-DNS>/api/products` to verify the app. The JSON includes `served_by` to identify responding instances.
+5. With Node.js installed locally, run:
 
-1. Create a storage account and a container named `climate-data`, then upload `climate.csv`.
-2. Create a Function App (Consumption plan, Node.js 22). Python was not available on the plan my free trial allowed.
-3. Add these app settings:
+   ```bash
+   node load-test/loadtest2.js http://<YOUR-ALB-DNS>
+   ```
 
-| Name | Value |
-|---|---|
-| `OPENWEATHER_API_KEY` | your OpenWeatherMap key |
-| `STORAGE_CONNECTION_STRING` | the storage account connection string |
+   The script runs **60 seconds at concurrency 2**, **1,200 seconds at concurrency 40**, then **120 seconds at concurrency 2**, reporting 10-second intervals. It generates **live requests to the ALB**, not requests replayed from `traffic.csv`.
+6. Observe target health, ASG capacity, CloudWatch CPU graphs, and alarms. When finished, delete billable AWS resources, including the ALB, ASG, and associated instances.
 
-4. Create an HTTP-trigger function called `climateFunction` and paste in `azure-function/climateFunction/index.js`.
-5. The code needs the `@azure/storage-blob` package (listed in `azure-function/package.json`). I installed it with `npm install` from the Kudu console in `site/wwwroot`.
-6. Open `https://<your-app>.azurewebsites.net/api/climateFunction?city=Abha`.
+**Security:** The original coursework demonstration used public HTTP and a web-instance security group accepting port 80 from anywhere. A production deployment should terminate HTTPS at the ALB, restrict instance ingress to the ALB security group, apply least-privilege IAM, and centralize logs. No SSH ingress was configured in the recorded security-group settings.
 
-## Load test
+## Synthetic datasets versus actual measurements
 
-`load-test/loadtest.js` sends 50 requests, 10 at a time, to each endpoint. Put your own URLs in the file and run `node loadtest.js`. It ran from my own computer, so distance to each region affects the numbers.
+The two datasets are **illustrative, generated data**, not customer telemetry or AWS CloudWatch exports. [`generate_datasets.py`](datasets/generate_datasets.py) produces **168 hourly records** over seven days, including a simulated sale spike. The recorded dataset peaks at **4,867 hourly hits** and **97% simulated CPU**. These values **do not measure the deployed EC2 instances** and **do not control the Node.js load generator**.
 
-| Metric | AWS run 1 | AWS run 2 | Azure run 1 | Azure run 2 |
-|---|---|---|---|---|
-| Average | 642 ms | 504 ms | 2,928 ms | 360 ms |
-| Median | 339 ms | 348 ms | 186 ms | 208 ms |
-| Slowest | 2,201 ms | 1,057 ms | 16,217 ms | 2,292 ms |
-| Errors | 0 | 0 | 0 | 0 |
+The load-test console output and AWS Console screenshots separately document the live demonstration.
 
-Run 1 includes cold starts. See the report for the full comparison.
+## Observed load-test results
 
-## Security notes
+| Metric | Run 1: 2 instances, scaling not observed | Run 2: after scale-out to 5 instances |
+|---|---:|---:|
+| Average spike response time | Approximately **2,010 ms** | Approximately **805 ms** |
+| Requests per 10 seconds during spike | Approximately **200** | Approximately **497** |
+| Script-reported request errors | **0** | **0** |
+| Quiet-phase average response time | Approximately **370–430 ms** | Approximately **335 ms** |
 
-- HTTPS is used on both platforms. API keys and connection strings are stored as environment variables / app settings and are **not** in this repository.
-- The AWS endpoint is anonymous over HTTPS. On Azure I enabled built-in sign-in (OAuth 2.0 / OpenID Connect with Microsoft Entra ID) after testing, so the live Azure link asks for a Microsoft login.
-- My Lambda role also has `PowerUserAccess`. In production it should be least privilege (S3 read-only plus logging).
+These observations correspond to roughly **60% lower average spike latency** and **149% more requests per 10 seconds** in the recorded comparison. They are **not a controlled benchmark**: the two runs had different ASG policy states, and the five-instance figures were taken near the end of the second spike. They should not be interpreted as a guaranteed performance improvement or a precise scaling-efficiency measurement.
 
-## Known issues
+During the first run, the group stayed at two instances. The scaling policy was not visible when checked afterward, so the `ecobuy-cpu-70` policy was created before the second run. During run 2, a CloudWatch high-CPU alarm accompanied scale-out from **2 → 3 → 5** instances. Subsequent instance-list screenshots showed a reduction from five toward the two-instance minimum. The ASG Activity entries explaining scale-in were not preserved.
 
-- Application Insights recorded 2 failed Azure invocations that I could not trace in the portal. My load test script saw 0 errors.
-- Dates in the CSV use mixed formats (for example `1861-01-01` and `01-08-2013`). This does not affect the average.
+**Evidence:** See [`screenshots/`](screenshots/), particularly `m2-11-scaling-policy.png`, `m2-12-scale-out.png`, `m2-13-alarm.png`, `m2-16-capacity-graph.png`, `m2-19-loadtest-results.png`, `m2-22-scaling-in.png`, and `m2-25-scale-out-max-5.png`.
+
+## Monitoring and limitations
+
+CloudWatch CPU graphs, target-tracking alarms, and ASG metrics were used to observe scaling. **No custom CloudWatch dashboard or centralized application-log collection was implemented**; application logs remained on the EC2 instances. The screenshots document healthy targets and instance-count changes, but **no controlled instance-failure recovery test** was performed. Scale-in is supported by instance lists rather than a complete ASG Activity audit trail.
+
+## Costs and teardown
+
+The recorded estimate for two always-running `t3.micro` instances plus the ALB was approximately **US$38.80/month** in Stockholm; an illustrative five-instance configuration was estimated at roughly **US$62/month**. These are **estimates, not actual monthly bills**. A Cost Explorer screenshot showed approximately **US$0.34** of account-level charges at the time of observation; that figure is **not isolated to this project**.
+
+**All AWS resources used for the demonstration were subsequently deleted.** The former ALB URL is inactive, and no live service or AWS account access is supplied with this repository. Recreating the system may incur charges.
+
+## Assignment evidence and documentation
+
+- [Four-page formatted assignment report](docs/Compute%20Solution-M2-Report.docx)
+- [Architecture diagram](docs/modular2-architecture.png)
+- [AWS Console setup notes](config/aws-console-settings.md)
+- [All 28 evidence screenshots](screenshots/)
+
+This repository records a completed educational prototype, including its limitations; it is **not** a production-ready deployment.
