@@ -28,8 +28,12 @@ A small serverless web service that combines **live weather data** (OpenWeatherM
 | `aws-lambda/` | Python Lambda function |
 | `azure-function/` | Node.js Azure Function (`climateFunction`) |
 | `load-test/` | Node.js script used for the load test |
-| `docs/` | Architecture diagram |
+| `docs/` | Architecture diagram and formatted Modular Assignment 1 report |
 | `screenshots/` | Evidence screenshots (AWS and Azure) |
+
+## Assignment report
+
+[Download the formatted Modular Assignment 1 report](docs/Introduction%20To%20CC-M1-Report.docx)
 
 ## APIs and data used
 
